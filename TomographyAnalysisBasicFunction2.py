@@ -42,22 +42,26 @@ def makeF(M, A, B, lX):
     return F
 
 
-def _3D_SegmentRegression(Ts, Xs, Hs, dT, lam=1.0e3):
-    n_H = max(Hs) + 1
+def _3D_SegmentRegression(hgts, Ts, Xs, Hs, dT, lam=1.0e3):
+    n_H = len(Hs)
     n_P = len(Ts)
 
     T_div = [[] for ih in range(n_H)]
     X_div = [[] for ih in range(n_H)]
     for ip in range(n_P):
-        h = Hs[ip]
+        h = -1
+        for jh in range(len(hgts)):
+            if abs(hgts[jh] - Hs[ip]) < 0.1:
+                h = jh
         T_div[h].append(Ts[ip])
         X_div[h].append(Xs[ip])
-
     Ms = []
     As = []
     dAs = []
     Bs = []
     lXs = []
+    # データがなかったときにどうする？
+
     for ih in range(n_H):
         M, A, B, lX = SegmentRegression(
             T_div[ih], X_div[ih], dT, lam=lam, Tbound=[min(Ts), max(Ts)]
@@ -171,17 +175,20 @@ def SegmentRegression(Ts, Xs, dT, lam=1.0e3, Tbound=[np.nan, np.nan]):
 
     mT = 0.0
     MT = 0.0
-    if Tbound[0] == np.nan:
+    if np.isnan(Tbound[0]):
         mT = min(Ts)
     else:
         mT = Tbound[0]
-    if Tbound[1] == np.nan:
+    if np.isnan(Tbound[1]):
         MT = max(Ts)
     else:
         MT = Tbound[1]
 
     N = len(Ts)
     M = math.ceil((MT - mT) / dT)
+    print(M, N, MT, mT)
+    if N == 0 or M == 0:
+        return 0, np.nan, np.nan, np.nan
 
     idx_list = np.full((N), -1, dtype=int)
     XX_seg = np.full((M), 0.0, dtype=float)
@@ -271,7 +278,8 @@ def Lag(
 
     hgts = np.full((n_h), 0.0, dtype=float)
     for ih in range(n_h):
-        hgts = a1h[divs[ih]]
+        hgts[ih] = a1h[divs[ih]]
+    print(hgts)
 
     res = np.full((n_h, n_t, n_p), np.nan, dtype=float)
 
@@ -333,18 +341,19 @@ def Lag(
                     t_plus.append(T)
                     p_plus.append([T, X, H])
 
-        n_minus, gt_minus, gx_minus, gh_minus = Clustering(p_minus)
+    print(len(p_minus))
+    n_minus, gt_minus, gx_minus, gh_minus = Clustering(p_minus)
 
-        for i_minus in range(n_minus):
-            for jx in range(len(gx_minus[i_minus])):
-                gx_minus[i_minus][jx] = gx_minus[i_minus][jx] * d_sigma + d_var
-            for jt in range(len(gt_minus[i_minus])):
-                gt_minus[i_minus][jx] = gt_minus[i_minus][jx] * h_sigma + h_var
+    for i_minus in range(n_minus):
+        for jx in range(len(gx_minus[i_minus])):
+            gx_minus[i_minus][jx] = gx_minus[i_minus][jx] * d_sigma + d_var
+        for jh in range(len(gh_minus[i_minus])):
+            gh_minus[i_minus][jh] = gh_minus[i_minus][jh] * h_sigma + h_var
 
-        for i_minus in range(n_minus):
-            _3D_SegmentRegression(
-                gt_minus[i_minus], gx_minus[i_minus], gh_minus[i_minus], 0.5
-            )
+    for i_minus in range(n_minus):
+        _3D_SegmentRegression(
+            hgts, gt_minus[i_minus], gx_minus[i_minus], gh_minus[i_minus], 0.5
+        )
 
 
 if __name__ == "__main__":
@@ -354,7 +363,7 @@ if __name__ == "__main__":
     day = 193
     code = "MSTID_1+2_04d_3_2_0_8-1"
     exps = []
-    for i in range(1320, 2200, 1):
+    for i in range(1600, 1630, 1):
         exps.append(EXPERIMENT(country, year4, day, code, i))
     Lag(
         drive,
