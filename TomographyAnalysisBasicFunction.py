@@ -6,10 +6,12 @@ from matplotlib import pyplot as plt
 import math
 import datetime
 from math import acos, cos, sin
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, lil_matrix
+from scipy.sparse.linalg import spsolve
 
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.stats import zscore
+from scipy.interpolate import interp1d
 
 import matplotlib
 
@@ -547,7 +549,7 @@ def detrended_TEC(drive, exps, setting: SETTING, rall, lwindow=121, record=True)
                 print("# ", file=f)
                 print("# Number of Boxel (All area)", file=f)
                 print("# Latitude : {nb:03d}".format(nb=n_b), file=f)
-                print("# Longitude : {nl:03d}".format(nl=n_b), file=f)
+                print("# Longitude : {nl:03d}".format(nl=n_l), file=f)
                 print("# Height : {nh:03d}".format(nh=n_h), file=f)
                 print("# ", file=f)
                 print("# *** Plain List ***", file=f)
@@ -721,7 +723,7 @@ def ExtractDataOnLine(rall, a2t, setting: SETTING, hgt: int, r_p: np.ndarray, di
 
     H = 0.5 * (a1h[hgt] + a1h[hgt + 1])
 
-    n_p = 1000
+    n_p = 200
     bs = np.linspace(s_b, e_b, n_p)
     ls = np.linspace(s_l, e_l, n_p)
     dist = np.full((n_p), 0.0, dtype=float)
@@ -748,35 +750,35 @@ def ExtractDataOnLine(rall, a2t, setting: SETTING, hgt: int, r_p: np.ndarray, di
 
     ds, ts = np.meshgrid(dist, time)
 
-    mB = 25.0
-    MB = 50.0
-    mL = 125.0
-    ML = 150.0
+    # mB = 25.0
+    # MB = 50.0
+    # mL = 125.0
+    # ML = 150.0
 
-    m = Basemap(
-        llcrnrlat=mB,
-        llcrnrlon=mL,
-        urcrnrlat=MB,
-        urcrnrlon=ML,
-        resolution="l",
-        ax=ax[0][0],
-    )
-    m.drawcoastlines()
-    m.drawmeridians(np.arange(mL, ML, 5), labels=[0, 0, 0, 1], fontsize=10)
-    m.drawparallels(np.arange(mB, MB, 5), labels=[1, 0, 0, 0], fontsize=10)
+    # m = Basemap(
+    #     llcrnrlat=mB,
+    #     llcrnrlon=mL,
+    #     urcrnrlat=MB,
+    #     urcrnrlon=ML,
+    #     resolution="l",
+    #     ax=ax[0][0],
+    # )
+    # m.drawcoastlines()
+    # m.drawmeridians(np.arange(mL, ML, 5), labels=[0, 0, 0, 1], fontsize=10)
+    # m.drawparallels(np.arange(mB, MB, 5), labels=[1, 0, 0, 0], fontsize=10)
 
-    xx, yy = m(r_p[:, 1], r_p[:, 0])
+    # xx, yy = m(r_p[:, 1], r_p[:, 0])
 
-    ax[0][0].plot([xx[0], xx[1]], [yy[0], yy[1]], "k-", linewidth=1)
-    ax[0][0].plot(xx, yy, "ko", markersize=5)
+    # ax[0][0].plot([xx[0], xx[1]], [yy[0], yy[1]], "k-", linewidth=1)
+    # ax[0][0].plot(xx, yy, "ko", markersize=5)
 
-    ax[0][1].pcolormesh(
-        ds, ts, res, cmap="jet", vmin=-0.01, vmax=0.01, shading="nearest"
-    )
-    ax[0][1].set_xlabel("distance [km]")
-    ax[0][1].set_ylabel("time [UTC/hour]")
+    # ax[0][1].pcolormesh(
+    #     ds, ts, res, cmap="jet", vmin=-0.01, vmax=0.01, shading="nearest"
+    # )
+    # ax[0][1].set_xlabel("distance [km]")
+    # ax[0][1].set_ylabel("time [UTC/hour]")
 
-    plt.show()
+    # plt.show()
 
     return res, ds, ts
 
@@ -796,37 +798,88 @@ def ExtractLocalStationary(res, ds, ts):
                 if res[jt, ip] > 0.003:
                     ind[jt, ip] = 1
 
-    fig, ax = plt.subplots(1, 2, squeeze=False)
-    ax[0][0].pcolormesh(
-        ds, ts, res, cmap="jet", vmin=-0.01, vmax=0.01, shading="nearest"
-    )
-    ax[0][0].set_xlabel("distance [km]")
-    ax[0][0].set_ylabel("time [UTC/hour]")
-    ax[0][1].pcolormesh(ds, ts, ind, cmap="bwr", vmin=-1, vmax=1, shading="nearest")
-    ax[0][1].set_xlabel("distance [km]")
-    ax[0][1].set_ylabel("time [UTC/hour]")
+    # fig, ax = plt.subplots(1, 2, squeeze=False)
+    # ax[0][0].pcolormesh(
+    #     ds, ts, res, cmap="jet", vmin=-0.01, vmax=0.01, shading="nearest"
+    # )
+    # ax[0][0].set_xlabel("distance [km]")
+    # ax[0][0].set_ylabel("time [UTC/hour]")
+    # ax[0][1].pcolormesh(ds, ts, ind, cmap="bwr", vmin=-1, vmax=1, shading="nearest")
+    # ax[0][1].set_xlabel("distance [km]")
+    # ax[0][1].set_ylabel("time [UTC/hour]")
 
-    plt.show()
+    # plt.show()
 
     return ind
 
 
-def Cluster(
+def SegmentRegression(Ts, Xs, dT, lam=1.0e3):
+    N = len(Ts)
+    mT = min(Ts)
+    MT = max(Ts)
+    M = math.ceil((MT - mT) / dT)
+
+    idx_list = np.full((N), -1, dtype=int)
+    XX_seg = np.full((M), 0.0, dtype=float)
+    X_seg = np.full((M), 0.0, dtype=float)
+    I_seg = np.full((M), 0.0, dtype=float)
+    Y_seg = np.full((M), 0.0, dtype=float)
+    XY_seg = np.full((M), 0.0, dtype=float)
+
+    for ip in range(N):
+        idx = math.floor((Ts[ip] - mT) / dT)
+        if idx >= M:
+            idx = M - 1
+        idx_list[ip] = idx
+        XX_seg[idx] += Ts[ip] * Ts[ip]
+        X_seg[idx] += Ts[ip]
+        I_seg[idx] += 1
+        Y_seg[idx] += Xs[ip]
+        XY_seg[idx] += Ts[ip] * Xs[ip]
+
+    K = lil_matrix((2 * M, 2 * M))
+    for i in range(M):
+        K[i, i] = XX_seg[i]
+        K[i + M, i] = X_seg[i]
+        K[i, i + M] = X_seg[i]
+        K[i + M, i + M] = I_seg[i]
+    L = np.full((2 * M, 1), 0.0, dtype=float)
+    for i in range(M):
+        L[i, 0] = XY_seg[i]
+        L[i + M, 0] = Y_seg[i]
+
+    _M = lil_matrix((M - 1, 2 * M))
+    for i in range(M - 1):
+        _M[i, i] = dT * (i + 1)
+        _M[i, i + 1] = -dT * (i + 1)
+        _M[i, i + M] = 1.0
+        _M[i, i + M + 1] = -1.0
+
+    csr_K = csr_matrix(K)
+    csr_L = csr_matrix(L)
+    csr_M = csr_matrix(_M)
+
+    P = spsolve(csr_K.T * csr_K + lam * lam * csr_M.T * csr_M, csr_K.T * csr_L)
+    A = P[:M]
+    B = P[M:]
+    X = np.linspace(0.0, dT * M, M + 1)
+    return M, A, B, X
+
+
+def ClusterLinear(
     ind: np.ndarray, ds: np.ndarray, ts: np.ndarray, drive, country, year4, day, code
 ):
+    dT = 0.5
     # クラスタリングのためにそれぞれの軸で標準化
     dist = ds[0, :]
     time = ts[:, 0]
 
     d_var = np.mean(dist)
     d_sigma = np.std(dist)
-    t_var = np.mean(time)
-    t_sigma = np.std(time)
 
     # print(dist, time)
 
     dist = zscore(dist)
-    time = zscore(time)
 
     n_t = time.shape[0]
     n_p = dist.shape[0]
@@ -857,7 +910,7 @@ def Cluster(
 
     Z_minus = linkage(p_minus, method="single")
 
-    t4 = 0.05 * max(Z_minus[:, 2])
+    t4 = 0.1
     c_minus4 = fcluster(Z_minus, t4, criterion="distance")
 
     print(max(c_minus4), len(c_minus4), len(p_minus))
@@ -873,7 +926,7 @@ def Cluster(
     ax[0, 0].scatter(x_minus, y_minus, s=3, c=c_minus4, cmap="jet")
 
     fig.savefig(
-        "{dr}/tid/{c}/{y4:04d}/{d:03d}/{cd}/clusters.png".format(
+        "{dr}/tid/{c}/{y4:04d}/{d:03d}/{cd}/minus_clusters.png".format(
             dr=drive, c=country, y4=year4, d=day, cd=code
         ),
         dpi=100,
@@ -887,28 +940,150 @@ def Cluster(
 
     for hg in range(n_group):
         group_x = []
-        group_y = []
+        group_t = []
         group_p = []
         is_TID = False
         for ip in range(n_point):
             if c_minus4[ip] == hg + 1:
                 X = x_minus[ip] * d_sigma + d_var
-                Y = y_minus[ip] * t_sigma + t_var
+                T = y_minus[ip]
                 group_x.append(X)
-                group_y.append(Y)
-                group_p.append([X, Y])
-        if max(group_y) - min(group_y) > 1.0:
+                group_t.append(T)
+                group_p.append([X, T])
+        if max(group_t) - min(group_t) > 1.0:
             is_TID = True
-        fig, ax = plt.subplots(1, 1, figsize=(13, 10), squeeze=False)
+        fig, ax = plt.subplots(1, 2, figsize=(13, 10), squeeze=False)
         if is_TID:
-            ax[0, 0].scatter(group_x, group_y, s=2, c="red")
+            P = np.polyfit(group_t, group_x, 1)
+            P1 = np.poly1d(P)
+            ax[0, 0].set_title(
+                "Group={g},Size={s},Average Velocity={v:05.1f} (m/sec)".format(
+                    g=hg + 1, s=len(group_p), v=P[0] * 1000.0 / 3600.0
+                )
+            )
+            ax[0, 0].scatter(group_t, group_x, s=2, c="red")
+
+            M, A, B, lX = SegmentRegression(group_t, group_x, 0.5)
+            vels = []
+            centers = []
+            for isec in range(M):
+                vels.append(A[isec] * 1000.0 / 3600.0)
+                centers.append(0.5 * (lX[isec] + lX[isec + 1]))
+
+            t_ls = np.linspace(min(group_t), max(group_t), 1000)
+            ax[0, 0].plot(t_ls, P1(t_ls), color="black", linewidth=3)
+            ax[0, 1].axhline(y=P[0] * 1000.0 / 3600.0)
+            for isec in range(M):
+                t_ls = np.linspace(lX[isec], lX[isec + 1], 10)
+                ax[0, 0].plot(
+                    t_ls,
+                    A[isec] * t_ls + B[isec],
+                    color="black",
+                    linestyle="dotted",
+                    linewidth=3,
+                )
+
+            ax[0, 1].plot(centers, vels, color="black", linewidth=3)
+            ax[0, 1].set_ylim(0, 200)
         else:
-            ax[0, 0].scatter(group_x, group_y, s=2, c="black")
-        ax[0, 0].set_title("Group={g},Size={s}".format(g=hg + 1, s=len(group_p)))
+            ax[0, 0].scatter(group_t, group_x, s=2, c="black")
+            ax[0, 0].set_title("Group={g},Size={s}".format(g=hg + 1, s=len(group_p)))
+            ax[0, 1].set_ylim(0, 200)
+        ax[0, 0].set_ylim(0, 2500)
+        ax[0, 0].set_xlim(11, 19)
+        fig.savefig(
+            "{dr}/tid/{c}/{y4:04d}/{d:03d}/{cd}/minus_c{h:03d}.png".format(
+                dr=drive, c=country, y4=year4, d=day, cd=code, h=hg
+            ),
+            dpi=100,
+        )
+        plt.clf()
+        plt.close()
+
+    Z_plus = linkage(p_plus, method="single")
+
+    t4 = 0.1
+    c_plus4 = fcluster(Z_plus, t4, criterion="distance")
+
+    print(max(c_plus4), len(c_plus4), len(p_plus))
+
+    fig, ax = plt.subplots(1, 1, figsize=(13, 10), squeeze=False)
+    ax[0, 0].scatter(x_plus, y_plus, s=3, c=c_plus4, cmap="jet")
+
+    fig.savefig(
+        "{dr}/tid/{c}/{y4:04d}/{d:03d}/{cd}/plus_clusters.png".format(
+            dr=drive, c=country, y4=year4, d=day, cd=code
+        ),
+        dpi=100,
+    )
+
+    plt.clf()
+    plt.close()
+
+    n_group = max(c_plus4)
+    n_point = len(p_plus)
+
+    # クラスタごとに処理をする
+    for hg in range(n_group):
+        group_x = []
+        group_t = []
+        group_p = []
+        is_TID = False
+        # クラスタ内の点を集める
+        for ip in range(n_point):
+            if c_plus4[ip] == hg + 1:
+                X = x_plus[ip] * d_sigma + d_var
+                T = y_plus[ip]
+                group_x.append(X)
+                group_t.append(T)
+                group_p.append([X, T])
+        # TIDと判断する条件を設定
+        if max(group_t) - min(group_t) > 1.0:
+            is_TID = True
+        fig, ax = plt.subplots(1, 2, figsize=(13, 10), squeeze=False)
+        if is_TID:
+            # 全体の直線近似P,P1を求める
+            P = np.polyfit(group_t, group_x, 1)
+            P1 = np.poly1d(P)
+            ax[0, 0].set_title(
+                "Group={g},Size={s},Velocity={v:05.1f} (m/sec)".format(
+                    g=hg + 1, s=len(group_p), v=P[0] * 1000.0 / 3600.0
+                )
+            )
+            ax[0, 0].scatter(group_t, group_x, s=2, c="red")
+
+            M, A, B, lX = SegmentRegression(group_t, group_x, 0.5)
+            vels = []
+            centers = []
+            # 区間毎に直線近似を求めていき、特徴量を配列に加えていく
+            for isec in range(M):
+                vels.append(A[isec] * 1000.0 / 3600.0)
+                centers.append(0.5 * (lX[isec] + lX[isec + 1]))
+
+            # 区間毎の直線を引く + 区間毎の速度をプロットする
+            t_ls = np.linspace(min(group_t), max(group_t), 1000)
+            ax[0, 0].plot(t_ls, P1(t_ls), color="black", linewidth=3)
+            ax[0, 1].axhline(y=P[0] * 1000.0 / 3600.0)
+            for isec in range(M):
+                t_ls = np.linspace(lX[isec], lX[isec + 1], 10)
+                ax[0, 0].plot(
+                    t_ls,
+                    A[isec] * t_ls + B[isec],
+                    color="black",
+                    linestyle="dotted",
+                    linewidth=3,
+                )
+
+            ax[0, 1].plot(centers, vels, color="black", linewidth=3)
+            ax[0, 1].set_ylim(0, 200)
+        else:
+            ax[0, 0].scatter(group_x, group_t, s=2, c="black")
+            ax[0, 0].set_title("Group={g},Size={s}".format(g=hg + 1, s=len(group_p)))
+            ax[0, 1].set_ylim(0, 200)
         ax[0, 0].set_xlim(0, 2500)
         ax[0, 0].set_ylim(11, 19)
         fig.savefig(
-            "{dr}/tid/{c}/{y4:04d}/{d:03d}/{cd}/c_{h:03d}.png".format(
+            "{dr}/tid/{c}/{y4:04d}/{d:03d}/{cd}/plus_c{h:03d}.png".format(
                 dr=drive, c=country, y4=year4, d=day, cd=code, h=hg
             ),
             dpi=100,
@@ -1003,26 +1178,26 @@ if __name__ == "__main__":
     country = "jp"
     year4 = 2016
     doy = 193
-    code = "keq_1+1_05d_3_1_2_3-1"
-    epochs = np.arange(1320, 2220, 1)
+    code = "MSTID_1+2_04d_3_2_0_8-1"
+    epochs = np.arange(1320, 2200, 1)
 
     exps = []
     for ep in epochs:
         exp = EXPERIMENT(country, year4, doy, code, ep)
         exps.append(exp)
 
-    # datas, C, result, setting = ImportTomoSequence(drive, exps)
+    datas, C, result, setting = ImportTomoSequence(drive, exps)
 
-    # dne = detrended_TEC(drive, exps, setting, result)
+    dne = detrended_TEC(drive, exps, setting, result)
 
     datas, a2t, setting = ImportDTomoSequence(drive, exps)
 
     res, ds, ts = ExtractDataOnLine(
-        datas, a2t, setting, 7, np.array([[45, 145], [30, 130]])
+        datas, a2t, setting, 7, np.array([[50, 150], [25, 125]])
     )
 
-    ind = ExtractLocalStationary(res, ds, ts)
+    # ind = ExtractLocalStationary(res, ds, ts)
 
-    code = "keq_1+1_05d_3_1_2_3-1_3-3_1-1"
+    # code = "keq_1+1_05d_3_1_2_3-1_3-3_1-1"
 
-    Cluster(ind, ds, ts, drive, country, year4, doy, code)
+    # ClusterLinear(ind, ds, ts, drive, country, year4, doy, code)
