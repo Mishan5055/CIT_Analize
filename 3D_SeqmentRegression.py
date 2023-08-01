@@ -132,6 +132,7 @@ def _3D_SegmentRegression(l_Ts, l_Xs, l_Hs, s_Ts, s_Xs, s_Hs, dT, lam=1.0e3):
     Bs = []
     ll_Xs = []
     for ih in range(n_H):
+        print(len(T_div[ih]), len(X_div[ih]))
         M, A, B, lX = SegmentRegression(
             T_div[ih], X_div[ih], dT, lam=lam, Tbound=[min(l_Ts)-0.0001, max(l_Ts)+0.0001])
         Ms.append(M)
@@ -255,6 +256,8 @@ def SegmentRegression(l_Ts, l_Xs, dT, lam=1.0e3, Tbound=[np.nan, np.nan]):
         else:
             if a1t[len(a1t)-1] < MT:
                 a1t.append(MT)
+    if len(l_Ts) < 2 or len(l_Xs) < 2:
+        return M, np.full((M), np.nan, dtype=float), np.full((0), np.nan, dtype=float), a1t
     n_t = len(a1t)-1
     count = makecount(a1t, l_Ts)
     COUNT = count.copy()
@@ -324,10 +327,10 @@ def SegmentRegression(l_Ts, l_Xs, dT, lam=1.0e3, Tbound=[np.nan, np.nan]):
 
 if __name__ == "__main__":
     n_H = 3
-    n_P = 60
+    n_P = 2000
     a = np.full((n_H), 0.0, dtype=float)
     b = np.full((n_H), 0.0, dtype=float)
-    H = np.linspace(100, 300, 3)
+    H = np.linspace(100, 400, 4)
     a[0] = 100.0
     a[1] = 102.0
     a[2] = 105.0
@@ -354,6 +357,7 @@ if __name__ == "__main__":
                 s_Xs.append(Dist)
             if findex(s_Hs, Height) == -1:
                 s_Hs.append(Height)
+    s_Hs.append(50.0)
     # print(l_Ts)
     _3D_SegmentRegression(l_Ts, l_Xs, l_Hs, s_Ts, s_Xs, s_Hs, 1.0, lam=0.0)
     _3D_SegmentRegression(l_Ts, l_Xs, l_Hs, s_Ts, s_Xs, s_Hs, 1.0, lam=1.0e+3)
