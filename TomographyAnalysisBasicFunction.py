@@ -750,40 +750,42 @@ def ExtractDataOnLine(rall, a2t, setting: SETTING, hgt: int, r_p: np.ndarray, di
 
     ds, ts = np.meshgrid(dist, time)
 
-    # mB = 25.0
-    # MB = 50.0
-    # mL = 125.0
-    # ML = 150.0
+    mB = 25.0
+    MB = 50.0
+    mL = 125.0
+    ML = 150.0
 
-    # m = Basemap(
-    #     llcrnrlat=mB,
-    #     llcrnrlon=mL,
-    #     urcrnrlat=MB,
-    #     urcrnrlon=ML,
-    #     resolution="l",
-    #     ax=ax[0][0],
-    # )
-    # m.drawcoastlines()
-    # m.drawmeridians(np.arange(mL, ML, 5), labels=[0, 0, 0, 1], fontsize=10)
-    # m.drawparallels(np.arange(mB, MB, 5), labels=[1, 0, 0, 0], fontsize=10)
+    m = Basemap(
+        llcrnrlat=mB,
+        llcrnrlon=mL,
+        urcrnrlat=MB,
+        urcrnrlon=ML,
+        resolution="l",
+        ax=ax[0][0],
+    )
+    m.drawcoastlines()
+    m.drawmeridians(np.arange(mL, ML, 5), labels=[0, 0, 0, 1], fontsize=10)
+    m.drawparallels(np.arange(mB, MB, 5), labels=[1, 0, 0, 0], fontsize=10)
 
-    # xx, yy = m(r_p[:, 1], r_p[:, 0])
+    xx, yy = m(r_p[:, 1], r_p[:, 0])
 
-    # ax[0][0].plot([xx[0], xx[1]], [yy[0], yy[1]], "k-", linewidth=1)
-    # ax[0][0].plot(xx, yy, "ko", markersize=5)
+    ax[0][0].plot([xx[0], xx[1]], [yy[0], yy[1]], "k-", linewidth=1)
+    ax[0][0].plot(xx, yy, "ko", markersize=5)
 
-    # ax[0][1].pcolormesh(
-    #     ds, ts, res, cmap="jet", vmin=-0.01, vmax=0.01, shading="nearest"
-    # )
-    # ax[0][1].set_xlabel("distance [km]")
-    # ax[0][1].set_ylabel("time [UTC/hour]")
+    cm = ax[0][1].pcolormesh(
+        ds, ts, res, cmap="jet", vmin=-0.01, vmax=0.01, shading="nearest"
+    )
+    ax[0][1].set_xlabel("distance [km]")
+    ax[0][1].set_ylabel("time [UTC/hour]")
+    plt.colorbar(cm, ax=ax[0][1])
+    fig.suptitle("Height = {h}".format(h=0.5 * (a1h[hgt] + a1h[hgt + 1])))
 
-    # plt.show()
+    plt.show()
 
     return res, ds, ts
 
 
-def ExtractLocalStationary(res, ds, ts):
+def ExtractLocalStationary(res, ds, ts, threshold):
     n_t = res.shape[0]
     n_p = res.shape[1]
     ind = np.full((n_t, n_p), 0, dtype=int)
@@ -793,22 +795,22 @@ def ExtractLocalStationary(res, ds, ts):
             if np.isnan(res[jt, ip]):
                 continue
             else:  # all not nan
-                if res[jt, ip] < -0.003:
+                if res[jt, ip] < -threshold:
                     ind[jt, ip] = -1
-                if res[jt, ip] > 0.003:
+                if res[jt, ip] > threshold:
                     ind[jt, ip] = 1
 
-    # fig, ax = plt.subplots(1, 2, squeeze=False)
-    # ax[0][0].pcolormesh(
-    #     ds, ts, res, cmap="jet", vmin=-0.01, vmax=0.01, shading="nearest"
-    # )
-    # ax[0][0].set_xlabel("distance [km]")
-    # ax[0][0].set_ylabel("time [UTC/hour]")
-    # ax[0][1].pcolormesh(ds, ts, ind, cmap="bwr", vmin=-1, vmax=1, shading="nearest")
-    # ax[0][1].set_xlabel("distance [km]")
-    # ax[0][1].set_ylabel("time [UTC/hour]")
+    fig, ax = plt.subplots(1, 2, squeeze=False)
+    ax[0][0].pcolormesh(
+        ds, ts, res, cmap="jet", vmin=-0.01, vmax=0.01, shading="nearest"
+    )
+    ax[0][0].set_xlabel("distance [km]")
+    ax[0][0].set_ylabel("time [UTC/hour]")
+    ax[0][1].pcolormesh(ds, ts, ind, cmap="bwr", vmin=-1, vmax=1, shading="nearest")
+    ax[0][1].set_xlabel("distance [km]")
+    ax[0][1].set_ylabel("time [UTC/hour]")
 
-    # plt.show()
+    plt.show()
 
     return ind
 
