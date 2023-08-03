@@ -133,7 +133,6 @@ def _3D_SegmentRegression(
 
     Ms = []
     As = []
-    dAs = []
     Bs = []
     ll_Xs = []
     for ih in range(n_H):
@@ -146,10 +145,6 @@ def _3D_SegmentRegression(
         )
         Ms.append(M)
         As.append(A)
-        dA = np.full((M), 0.0, dtype=float)
-        for jt in range(1, M, 1):
-            dA[jt] = (A[jt] - A[jt - 1]) / dT
-        dAs.append(dA)
         Bs.append(B)
         ll_Xs.append(lX)
     vel_average = []
@@ -235,6 +230,21 @@ def _3D_SegmentRegression(
         dpi=100,
     )
 
+    test_file = "D:/tid/{c}/{y4:04d}/{d:03d}/{code}/{n}.txt".format(
+        c=exps[0].c, y4=exps[0].y, d=exps[0].d, code=exps[0].code, n=name
+    )
+    with open(test_file, "w") as f:
+        for ih in range(n_H):
+            print(ih, Ms[ih], file=f)
+            print(As[ih], "->", vel_average[ih], file=f)
+            print(Bs[ih], file=f)
+            print(ll_Xs[ih], file=f)
+            for jp in range(len(T_div[ih])):
+                print(T_div[ih][jp], ",", end="", file=f)
+            for jp in range(len(T_div[ih])):
+                print(X_div[ih][jp], ",", end="", file=f)
+            print(file=f)
+
 
 def SegmentRegression(l_Ts, l_Xs, dT, lam=1.0e3, Tbound=[np.nan, np.nan]):
     """
@@ -316,8 +326,8 @@ def SegmentRegression(l_Ts, l_Xs, dT, lam=1.0e3, Tbound=[np.nan, np.nan]):
 
     _M = lil_matrix((M - 1, 2 * M))
     for i in range(M - 1):
-        _M[i, i] = dT * (i + 1)
-        _M[i, i + 1] = -dT * (i + 1)
+        _M[i, i] = a1t[i + 1]
+        _M[i, i + 1] = -a1t[i + 1]
         _M[i, i + M] = 1.0
         _M[i, i + M + 1] = -1.0
 

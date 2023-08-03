@@ -192,7 +192,8 @@ def Lag(
             sx_minus,
             sh_minus,
             0.5,
-            "minus_{i:03d}".format(i=i_minus),
+            "minus_{i:03d}_v6".format(i=i_minus),
+            lam=1.0e3,
         )
 
     n_plus, gt_plus, gx_plus, gh_plus = Clustering(p_plus)
@@ -226,7 +227,8 @@ def Lag(
             sx_plus,
             sh_plus,
             0.5,
-            "plus_{i:03d}".format(i=i_plus),
+            "plus_{i:03d}_v6".format(i=i_plus),
+            lam=1.0e3,
         )
 
 
